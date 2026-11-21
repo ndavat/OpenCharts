@@ -40,7 +40,25 @@ const CHART = {
 describe("yahoo symbol mapping", () => {
   it("accepts known tickers and refuses anything else", () => {
     expect(toYahooTicker("AAPL")).toBe("AAPL");
-    expect(toYahooTicker("BTCUSD")).toBeNull();
+    expect(toYahooTicker("NOPE")).toBeNull();
+  });
+
+  it("maps crypto display names to Yahoo's dashed tickers", () => {
+    expect(toYahooTicker("BTCUSD")).toBe("BTC-USD");
+    expect(toYahooTicker("ETHUSD")).toBe("ETH-USD");
+    expect(toYahooTicker("SOLUSD")).toBe("SOL-USD");
+    expect(toYahooTicker("BNBUSD")).toBe("BNB-USD");
+    expect(toYahooTicker("XRPUSD")).toBe("XRP-USD");
+    expect(toYahooTicker("ADAUSD")).toBe("ADA-USD");
+  });
+
+  it("serves crypto pairs with 24/7 metadata", async () => {
+    const feed = createStockFeed({ symbols: ["BTCUSD"] });
+    const [btc] = await feed.getSymbols();
+    expect(btc?.name).toBe("BTCUSD");
+    expect(btc?.displayName).toBe("Bitcoin");
+    expect(btc?.category).toBe("CRYPTO");
+    expect(btc?.tradingHoursStart).toBeNull();
   });
 
   it("serves equities with stock metadata", async () => {
@@ -71,6 +89,11 @@ describe("buildChartUrl", () => {
     expect(url).toContain(`period2=${Math.ceil(toMs / 1000)}`);
     expect(url).toContain("interval=15m");
     expect(url).toContain("includePrePost=false");
+  });
+
+  it("uses Yahoo's dashed ticker for crypto display symbols", () => {
+    const url = buildChartUrl({ symbol: "BTCUSD", timeframe: "1d" }, "/yh", now)!;
+    expect(url).toContain("/yh/v8/finance/chart/BTC-USD?");
   });
 
   it("asks for 60m bars when the chart wants 4h, and folds them later", () => {
@@ -156,6 +179,18 @@ describe("createStockFeed", () => {
 
     expect(candles).toHaveLength(2);
     expect(candles[1]?.close).toBe(342.5);
+  });
+
+  it("requests Yahoo's crypto ticker when quoting a crypto display symbol", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => CHART,
+    });
+    const fetchImpl = fetchMock as unknown as typeof fetch;
+
+    const feed = createStockFeed({ symbols: ["BTCUSD"], fetchImpl });
+    await feed.getQuote?.("BTCUSD");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/chart/BTC-USD?");
   });
 
   it("surfaces a rate-limit failure instead of pretending the market is empty", async () => {

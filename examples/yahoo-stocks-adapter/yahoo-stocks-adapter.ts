@@ -15,8 +15,9 @@ import type { Candle, Symbol } from "../../src/services/schemas.ts";
  *
  * The tradable universe comes from Nasdaq Trader's public symbol directory
  * (`nasdaqlisted.txt` + `otherlisted.txt`, ~6k common stocks and ~3.5k ETFs),
- * fetched once and cached in localStorage for a week. If that fetch fails the
- * 16 core names below still load, so the terminal never boots empty.
+ * fetched once and cached in localStorage for a week. Six crypto pairs are
+ * merged in alongside it. If the directory cannot be reached, the 16 core
+ * names and the crypto pairs still load, so the terminal never boots empty.
  *
  * Yahoo does not send CORS headers, so the browser cannot call it directly.
  * Requests go to `/yh/...` on the same origin and are forwarded by
@@ -87,7 +88,36 @@ function stockSymbol(ticker: string, company: string, category = "STOCKS"): Symb
 
 export const STOCK_SYMBOLS: Symbol[] = CORE.map(([ticker, company]) => stockSymbol(ticker, company));
 
-const CORE_BY_NAME = new Map(STOCK_SYMBOLS.map((spec) => [spec.name, spec]));
+/**
+ * Crypto pairs served by the same Yahoo chart endpoint. The terminal shows the
+ * compact `BTCUSD` style name; Yahoo needs `BTC-USD`, so requests are mapped.
+ */
+const CRYPTO: ReadonlyArray<readonly [name: string, label: string, yahooTicker: string]> = [
+  ["BTCUSD", "Bitcoin", "BTC-USD"],
+  ["ETHUSD", "Ethereum", "ETH-USD"],
+  ["SOLUSD", "Solana", "SOL-USD"],
+  ["BNBUSD", "BNB", "BNB-USD"],
+  ["XRPUSD", "XRP", "XRP-USD"],
+  ["ADAUSD", "Cardano", "ADA-USD"],
+];
+
+const CRYPTO_TO_YAHOO = new Map(CRYPTO.map(([name, , yahoo]) => [name, yahoo]));
+const CRYPTO_NAMES = new Set(CRYPTO.map(([name]) => name));
+
+function cryptoSymbol(name: string, label: string): Symbol {
+  return {
+    ...stockSymbol(name, label, "CRYPTO"),
+    // Crypto trades continuously; the 09:30–16:00 stock session breaks do not apply.
+    tradingHoursStart: null,
+    tradingHoursEnd: null,
+  };
+}
+
+export const CRYPTO_SYMBOLS: Symbol[] = CRYPTO.map(([name, label]) => cryptoSymbol(name, label));
+
+/** Everything available without the Nasdaq directory (fallback + first screen). */
+export const BUILT_IN_SYMBOLS: Symbol[] = [...STOCK_SYMBOLS, ...CRYPTO_SYMBOLS];
+const BUILT_IN_BY_NAME = new Map(BUILT_IN_SYMBOLS.map((spec) => [spec.name, spec]));
 
 interface TimeframeSpec {
   /** Yahoo `interval` parameter. */
@@ -150,15 +180,20 @@ const SESSION_PADDING = 6;
 
 // ── Pure helpers (exported for tests) ─────────────────────
 
+/** Translate a display symbol to the ticker Yahoo expects (crypto uses a dash). */
+export function yahooTicker(symbol: string): string {
+  return CRYPTO_TO_YAHOO.get(symbol) ?? symbol;
+}
+
 export function toYahooTicker(symbol: string): string | null {
-  return CORE_BY_NAME.has(symbol) ? symbol : null;
+  return BUILT_IN_BY_NAME.has(symbol) ? yahooTicker(symbol) : null;
 }
 
 export function buildChartUrl(
   request: CandleRequest,
   baseUrl = DEFAULT_BASE,
   nowMs = Date.now(),
-  isKnown: (symbol: string) => boolean = (symbol) => CORE_BY_NAME.has(symbol),
+  isKnown: (symbol: string) => boolean = (symbol) => BUILT_IN_BY_NAME.has(symbol),
 ): string | null {
   const spec = TIMEFRAMES[request.timeframe];
   if (!spec || !request.symbol || !isKnown(request.symbol)) return null;
@@ -178,7 +213,7 @@ export function buildChartUrl(
     interval: spec.interval,
     includePrePost: "false",
   });
-  return `${baseUrl}/v8/finance/chart/${encodeURIComponent(request.symbol)}?${params.toString()}`;
+  return `${baseUrl}/v8/finance/chart/${encodeURIComponent(yahooTicker(request.symbol))}?${params.toString()}`;
 }
 
 interface YahooMeta {
@@ -349,6 +384,12 @@ export function toUniverse(rows: readonly DirectoryRow[]): Symbol[] {
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The Nasdaq directory has no crypto rows; append our fixed pairs to every universe. */
+function withCrypto(symbols: readonly Symbol[]): Symbol[] {
+  const seen = new Set(symbols.map((spec) => spec.name));
+  return [...symbols, ...CRYPTO_SYMBOLS.filter((spec) => !seen.has(spec.name))];
+}
+
 interface CachedUniverse {
   at: number;
   symbols: Array<{ t: string; n: string; e: boolean }>;
@@ -361,7 +402,7 @@ function readUniverseCache(): Symbol[] | null {
     const parsed = JSON.parse(raw) as CachedUniverse;
     if (!parsed?.at || Date.now() - parsed.at > UNIVERSE_TTL_MS) return null;
     if (!Array.isArray(parsed.symbols) || parsed.symbols.length === 0) return null;
-    return parsed.symbols.map((row) => stockSymbol(row.t, row.n, row.e ? "ETFS" : "STOCKS"));
+    return withCrypto(parsed.symbols.map((row) => stockSymbol(row.t, row.n, row.e ? "ETFS" : "STOCKS")));
   } catch {
     return null;
   }
@@ -371,11 +412,14 @@ function writeUniverseCache(symbols: Symbol[]): void {
   try {
     const payload: CachedUniverse = {
       at: Date.now(),
-      symbols: symbols.map((s) => ({
-        t: s.name,
-        n: s.displayName ?? s.name,
-        e: s.category === "ETFS",
-      })),
+      // Crypto is re-added by withCrypto on read, keeping its 24/7 metadata.
+      symbols: symbols
+        .filter((s) => !CRYPTO_NAMES.has(s.name))
+        .map((s) => ({
+          t: s.name,
+          n: s.displayName ?? s.name,
+          e: s.category === "ETFS",
+        })),
     };
     globalThis.localStorage?.setItem(UNIVERSE_CACHE_KEY, JSON.stringify(payload));
   } catch {
@@ -409,7 +453,7 @@ export async function loadStockUniverse(options: {
     ...parseNasdaqListed(await nasdaq.text()),
     ...parseOtherListed(await other.text()),
   ];
-  const symbols = toUniverse(rows);
+  const symbols = withCrypto(toUniverse(rows));
   if (symbols.length === 0) throw new Error("Symbol directory was empty");
   writeUniverseCache(symbols);
   return symbols;
@@ -530,7 +574,7 @@ export function createStockFeed(options: StockFeedOptions = {}): StockFeed {
       interval: "1m",
       includePrePost: "false",
     });
-    const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(symbol)}?${params.toString()}`;
+    const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(yahooTicker(symbol))}?${params.toString()}`;
 
     const task = (async (): Promise<Snapshot> => {
       const response = await doFetch(url);
@@ -728,9 +772,11 @@ export function createStockFeed(options: StockFeedOptions = {}): StockFeed {
 
 function buildInitialUniverse(options: StockFeedOptions): Symbol[] {
   if (options.symbols) {
-    return options.symbols.map((symbol) => CORE_BY_NAME.get(symbol) ?? stockSymbol(symbol, symbol));
+    return options.symbols.map(
+      (symbol) => BUILT_IN_BY_NAME.get(symbol) ?? stockSymbol(symbol, symbol),
+    );
   }
-  return STOCK_SYMBOLS;
+  return BUILT_IN_SYMBOLS;
 }
 
 /**

@@ -271,6 +271,12 @@ export const POPULAR_SYMBOLS = [
   "TSLA",
   "SPY",
   "QQQ",
+  "BTCUSD",
+  "ETHUSD",
+  "SOLUSD",
+  "BNBUSD",
+  "XRPUSD",
+  "ADAUSD",
 ];
 
 

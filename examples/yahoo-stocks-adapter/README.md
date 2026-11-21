@@ -56,6 +56,12 @@ cached in `localStorage` for 7 days, so later loads are instant. The 16 liquid
 core names remain as a fallback if the directory cannot be reached: AAPL, MSFT,
 NVDA, AMZN, GOOGL, META, TSLA, AMD, AVGO, NFLX, JPM, SPY, QQQ, COIN, PLTR, IWM.
 
+Six crypto pairs are merged into every universe (including the cached and
+fallback ones): `BTCUSD`, `ETHUSD`, `SOLUSD`, `BNBUSD`, `XRPUSD`, `ADAUSD`.
+They display with those compact names, while requests use Yahoo's dashed
+tickers (`BTC-USD`, etc.) and carry `category: "CRYPTO"` with no equity session
+breaks.
+
 You can narrow it at runtime with
 `createStockPaperAdapter({ symbols: ["AAPL", "SPY"] })`. Every symbol must be a
 valid Yahoo ticker (class shares use a dash: `BRK-B`, not `BRK.B`).
@@ -65,11 +71,14 @@ respectively), so the full directory never stalls the UI. The picker leads with
 familiar names when its search box is empty and shows a "keep typing" hint once
 a query has more matches than it displays.
 
-Symbols carry `category: "STOCKS"` or `"ETFS"`, which turns on:
+Equities carry `category: "STOCKS"` or `"ETFS"`, which turns on:
 
 - the 09:30–16:00 New York session breaks on intraday charts
 - 2-decimal price formatting
 - 25% margin (`marginPercent: 25`), i.e. 4x intraday buying power
+
+Crypto pairs use `category: "CRYPTO"` and no trading-hours window, so charts do
+not shade equity sessions. All pairs still use 2-decimal price formatting.
 
 ## Timeframes
 
