@@ -1471,6 +1471,9 @@ export function ChartPanel({
         textColor: colors.text,
         fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
         fontSize: 11,
+        // lightweight-charts shows a TradingView attribution badge by default.
+        // This fork charts with Yahoo data and its own UI, so hide the badge.
+        attributionLogo: false,
       },
       grid: {
         vertLines: { color: colors.grid, style: LineStyle.Dotted },
