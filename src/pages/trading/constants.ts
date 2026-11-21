@@ -257,6 +257,23 @@ export const KNOWN_CURRENCIES = [
   "DKK",
 ];
 
+/**
+ * Liquid names shown before the user narrows a large symbol directory. Used by
+ * the symbol picker's empty state and the first-run watchlist favourites.
+ */
+export const POPULAR_SYMBOLS = [
+  "AAPL",
+  "MSFT",
+  "NVDA",
+  "AMZN",
+  "GOOGL",
+  "META",
+  "TSLA",
+  "SPY",
+  "QQQ",
+];
+
+
 export interface NewsOverlayConfig {
   enabled: boolean;
   lineColor: string;

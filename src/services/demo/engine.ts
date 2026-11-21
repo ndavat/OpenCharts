@@ -116,8 +116,26 @@ export function getClosedPositionsSummary(): {
 
 // ── Validation ────────────────────────────────────────────────────────────
 
+/**
+ * Instruments contributed by an installed adapter.
+ *
+ * The bundled demo only knows its own crypto pairs. A live feed - the Yahoo
+ * stocks adapter, for example - registers its symbols here so the paper engine
+ * can price, margin and trade them without the engine knowing where they came
+ * from.
+ */
+const externalSymbols = new Map<string, Symbol>();
+
+export function registerSymbols(specs: readonly Symbol[]): void {
+  for (const spec of specs) externalSymbols.set(spec.name, spec);
+}
+
+function lookupSymbol(name: string): Symbol | undefined {
+  return getDemoSymbol(name) ?? externalSymbols.get(name);
+}
+
 function requireSymbol(name: string): Symbol {
-  const symbol = getDemoSymbol(name);
+  const symbol = lookupSymbol(name);
   if (!symbol) throw new EngineError("UNKNOWN_SYMBOL", `Unknown symbol: ${name}`);
   return symbol;
 }
@@ -189,16 +207,21 @@ function validateProtection(
 // ── Account maths ─────────────────────────────────────────────────────────
 
 function notional(symbol: string, qty: number, price: number): number {
-  const contractSize = getDemoSymbol(symbol)?.contractSize ?? 1;
+  const contractSize = lookupSymbol(symbol)?.contractSize ?? 1;
   return price * qty * contractSize;
 }
 
 function marginFor(symbol: string, qty: number, price: number): number {
-  return notional(symbol, qty, price) / DEFAULT_LEVERAGE;
+  // `marginPercent` is the share of notional the trader must post: 1 for 100x
+  // crypto, 20 for 5x equities. Falls back to the demo's 100x when a spec omits it.
+  const marginPercent = lookupSymbol(symbol)?.marginPercent;
+  const leverage =
+    marginPercent != null && marginPercent > 0 ? 100 / marginPercent : DEFAULT_LEVERAGE;
+  return notional(symbol, qty, price) / leverage;
 }
 
 function pnlOf(pos: Position, price: number): number {
-  const contractSize = getDemoSymbol(pos.symbolName)?.contractSize ?? 1;
+  const contractSize = lookupSymbol(pos.symbolName)?.contractSize ?? 1;
   const dir = pos.side === "LONG" ? 1 : -1;
   return (price - pos.entryPrice) * pos.quantity * contractSize * dir;
 }
@@ -257,7 +280,7 @@ function openPosition(
     currentPrice: price,
     unrealizedPnl: 0,
     margin: money(marginFor(symbol, qty, price)),
-    contractSize: getDemoSymbol(symbol)?.contractSize ?? 1,
+    contractSize: lookupSymbol(symbol)?.contractSize ?? 1,
     openedAt: new Date().toISOString(),
     takeProfit: tp ?? null,
     stopLoss: sl ?? null,

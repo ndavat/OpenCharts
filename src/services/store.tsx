@@ -4,6 +4,7 @@ import { wsClient } from "./ws.ts";
 import type { Account, Order, Position, Symbol, User } from "./schemas.ts";
 import { safeStorage } from "../lib/safe-storage.ts";
 import { isHyperliquidMode } from "../hyperliquid/ui/mode.ts";
+import { chooseAdapter } from "../adapterChoice.ts";
 
 type LoginMfaResponse = {
   mfaRequired: true;
@@ -389,11 +390,18 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   loadSymbols: async () => {
     const symbols = await api.getSymbols();
     set({ symbols });
-    // Hyperliquid has no demo "BTCUSD": land on a real market (prefer BTC) once symbols load.
-    if (isHyperliquidMode() && symbols.length > 0) {
+    // The store boots on the demo's "BTCUSD". Any adapter with a different
+    // universe (Hyperliquid, the Yahoo stocks feed) must land on a market that
+    // actually exists, or the chart opens empty.
+    if (symbols.length > 0) {
       const cur = get().selectedSymbol;
       if (!symbols.some((x) => x.name === cur)) {
-        const pick = symbols.find((x) => x.name === "BTC") ?? symbols[0];
+        const adapter = chooseAdapter(import.meta.env);
+        const preferredName = adapter === "stocks" ? "AAPL" : isHyperliquidMode() ? "BTC" : undefined;
+        const preferred = preferredName
+          ? symbols.find((x) => x.name === preferredName)
+          : undefined;
+        const pick = preferred ?? symbols[0];
         if (pick) get().setSelectedSymbol(pick.name);
       }
     }

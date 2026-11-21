@@ -5,12 +5,16 @@ import { formatNumber, cn } from "../../lib/utils.ts";
 import { toast } from "../../services/toast.ts";
 import { safeStorage } from "../../lib/safe-storage.ts";
 import { isHyperliquidMode } from "../../hyperliquid/ui/mode.ts";
+import { POPULAR_SYMBOLS } from "./constants.ts";
 
 // The Hyperliquid watchlist (categories, search, windowing, risk badges) is
 // loaded on demand so it never reaches the default demo bundle.
 const HlWatchlist = lazy(() =>
   import("../../hyperliquid/ui/HlWatchlist.tsx").then((m) => ({ default: m.HlWatchlist })),
 );
+
+/** Rows painted before the user narrows the list. */
+const MAX_WATCHLIST_ROWS = 200;
 
 export interface WatchlistPanelProps {
   symbols: Array<{
@@ -56,10 +60,13 @@ function GenericWatchlistPanel({
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
       const saved = safeStorage.getItem("watchlist_favorites");
-      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+      if (saved) return new Set(JSON.parse(saved));
     } catch {
-      return new Set<string>();
+      // corrupt or unavailable storage - fall through to the defaults
     }
+    // First run: start on the mega-caps rather than whatever sorts first out of
+    // the ~11,000-name directory.
+    return new Set(POPULAR_SYMBOLS.filter((name) => symbols.some((s) => s.name === name)));
   });
 
   const toggleFavorite = useCallback((name: string) => {
@@ -94,6 +101,13 @@ function GenericWatchlistPanel({
         return a.name.localeCompare(b.name);
       });
   }, [symbols, filter, selectedCat, favorites]);
+
+  // The directory is ~11,000 listings. Rendering every row would stall the tab,
+  // so show a screenful and let the search box find the rest.
+  const visible = useMemo(
+    () => filtered.slice(0, filter ? 500 : MAX_WATCHLIST_ROWS),
+    [filtered, filter],
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -144,9 +158,10 @@ function GenericWatchlistPanel({
         ))}
       </div>
       <div className="flex-1 overflow-y-auto">
-        {filtered.map((s) => {
+        {visible.map((s) => {
           const t = ticks[s.name];
           const isFav = favorites.has(s.name);
+          const decimals = /stock|equit|etf/i.test(s.category ?? "") ? 2 : 5;
           const handleQuickTrade = (side: "BUY" | "SELL") => {
             if (!isFeedConnected) {
               toast.warning("No Data Feed", "Cannot trade while disconnected");
@@ -198,8 +213,8 @@ function GenericWatchlistPanel({
               {t ? (
                 <div className="flex items-center gap-1">
                   <div className="text-right font-mono">
-                    <div className="text-buy">{formatNumber(t.bid, 5)}</div>
-                    <div className="text-sell">{formatNumber(t.ask, 5)}</div>
+                    <div className="text-buy">{formatNumber(t.bid, decimals)}</div>
+                    <div className="text-sell">{formatNumber(t.ask, decimals)}</div>
                   </div>
                   {oneClick && (
                     <div className="hidden group-hover:flex flex-col gap-0.5 ml-1">
@@ -224,6 +239,11 @@ function GenericWatchlistPanel({
             </div>
           );
         })}
+        {filtered.length > visible.length && (
+          <div className="px-3 py-2 text-[10px] text-muted-foreground text-center">
+            Showing {visible.length} of {filtered.length} · type to search
+          </div>
+        )}
       </div>
     </div>
   );

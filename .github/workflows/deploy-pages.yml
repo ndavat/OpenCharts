@@ -1,7 +1,7 @@
-name: Deploy demo
+name: Deploy stocks terminal to Pages
 
-# Publishes the terminal to GitHub Pages so the README can link a live demo.
-# Requires Pages to be enabled once, in Settings → Pages → Source: GitHub Actions.
+# Static GitHub Pages host for the US-equities build. Yahoo/Nasdaq data routes
+# are served by the Worker deployed in deploy-worker.yml (see DEPLOYMENT.md).
 
 on:
   push:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build demo
+    name: Build stocks terminal
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,11 +34,26 @@ jobs:
 
       - run: npm ci
 
+      # Without the Worker origin the static build would load but show no data.
+      - name: Require proxy origin
+        env:
+          PROXY_ORIGIN: ${{ vars.PROXY_ORIGIN }}
+        run: |
+          if [ -z "$PROXY_ORIGIN" ]; then
+            echo "::error::Set repository variable PROXY_ORIGIN to the Worker origin (see DEPLOYMENT.md)."
+            exit 1
+          fi
+
       # BASE_PATH makes asset URLs resolve under /<repo>/ on project Pages.
+      # The proxy origin is baked in at build time because VITE_* is compile-time.
       - name: Build
-        run: npm run build
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_ADAPTER: stocks
+          VITE_PROXY_ORIGIN: ${{ vars.PROXY_ORIGIN }}
+          # The production CSP is `connect-src 'self'`; allow the Worker too.
+          VITE_CSP_EXTRA_CONNECT: ${{ vars.PROXY_ORIGIN }}
+        run: npm run build
 
       - uses: actions/configure-pages@v5
 

@@ -39,6 +39,36 @@ function securityHeaders(): Plugin {
   };
 }
 
+/**
+ * Yahoo Finance rejects requests without a browser User-Agent (it answers 429),
+ * and it sends no CORS headers, so the equities adapter talks to `/yh` on this
+ * origin and the dev/preview servers forward it. A hosted build needs the same
+ * route - see examples/yahoo-stocks-adapter/worker/yahoo-proxy.js.
+ */
+const YAHOO_PROXY = {
+  "/yh": {
+    target: "https://query1.finance.yahoo.com",
+    changeOrigin: true,
+    rewrite: (p: string) => p.replace(/^\/yh/, ""),
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      Accept: "application/json",
+    },
+  },
+  // Nasdaq Trader's pipe-delimited symbol directory: every listed US stock and
+  // ETF. Fetched once a week by the stocks adapter.
+  "/symdir": {
+    target: "https://www.nasdaqtrader.com",
+    changeOrigin: true,
+    rewrite: (p: string) => p.replace(/^\/symdir/, ""),
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    },
+  },
+};
+
 export default defineConfig({
   // GitHub Pages serves a project site from /<repo>/, so the demo workflow sets
   // BASE_PATH. Local builds and self-hosting stay at the domain root.
@@ -77,6 +107,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      ...YAHOO_PROXY,
       "/api": {
         target: "http://localhost:3000",
         changeOrigin: true,
@@ -86,5 +117,9 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  preview: {
+    port: 4173,
+    proxy: { ...YAHOO_PROXY },
   },
 });

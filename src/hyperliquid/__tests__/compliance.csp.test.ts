@@ -44,6 +44,7 @@ describe("csp", () => {
 
   it("public/_headers matches the generated default (no drift)", () => {
     const body = publicHeaders
+      .replace(/\r\n/g, "\n") // committed with CRLF; compare line content, not EOL style
       .split("\n")
       .filter((l) => !l.startsWith("#"))
       .join("\n");

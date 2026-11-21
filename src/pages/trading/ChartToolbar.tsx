@@ -36,13 +36,14 @@ import {
   Type,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { INDICATOR_REGISTRY, type IndicatorType } from "../../lib/indicators.ts";
 import { cn, formatNumber } from "../../lib/utils.ts";
 import {
   type DrawingLine,
   type DrawingTool,
   type MagnetMode,
+  POPULAR_SYMBOLS,
   REPLAY_ENABLED,
   TIMEFRAMES,
   type Timeframe,
@@ -140,11 +141,35 @@ export function ChartToolbar({
   const [showSymbolSearch, setShowSymbolSearch] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState("");
 
-  const filteredSymbols = symbols.filter(
-    (s) =>
-      s.name.toLowerCase().includes(symbolFilter.toLowerCase()) ||
-      (s.category || "").toLowerCase().includes(symbolFilter.toLowerCase()),
-  );
+  const query = symbolFilter.trim().toLowerCase();
+
+  // Empty state: lead with the liquid names instead of the first alphabetical
+  // page, which would otherwise be almost entirely obscure tickers.
+  const popularFirst = useMemo(() => {
+    const byName = new Map(symbols.map((s) => [s.name, s]));
+    const popular = POPULAR_SYMBOLS.map((name) => byName.get(name)).filter(
+      (s): s is (typeof symbols)[number] => s != null,
+    );
+    const picked = new Set(popular.map((s) => s.name));
+    return [...popular, ...symbols.filter((s) => !picked.has(s.name))];
+  }, [symbols]);
+
+  const symbolMatches = query
+    ? symbols.filter(
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          (s.displayName || "").toLowerCase().includes(query) ||
+          (s.category || "").toLowerCase().includes(query),
+      )
+    : popularFirst;
+
+  // ~11,000 listings: paint one page, and tell the user to keep typing.
+  const filteredSymbols = symbolMatches.slice(0, query ? 50 : 20);
+  const hiddenCount = symbolMatches.length - filteredSymbols.length;
+  const matchHint =
+    hiddenCount > 0
+      ? `Showing ${filteredSymbols.length} of ${symbolMatches.length} matches · keep typing to narrow`
+      : null;
 
   // Spread in pips/points: (ask - bid) / pipSize. Previously this multiplied
   // by contractSize which produced a meaningless quote-currency-per-lot number
@@ -226,6 +251,11 @@ export function ChartToolbar({
                       </button>
                     ))
                   )}
+                  {matchHint && (
+                    <div className="px-4 py-3 text-center text-xs text-muted-foreground border-t border-border/40">
+                      {matchHint}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -240,26 +270,37 @@ export function ChartToolbar({
                 className="w-full px-3 py-2 text-sm border-b border-border bg-card"
               />
               <div className="max-h-60 overflow-y-auto">
-                {filteredSymbols.map((s) => (
-                  <button
-                    key={s.id || s.name}
-                    onClick={() => {
-                      onSymbolChange(s.name);
-                      setShowSymbolSearch(false);
-                      setSymbolFilter("");
-                    }}
-                    className={cn(
-                      "w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-secondary",
-                      s.name === selectedSymbol && "bg-secondary",
-                    )}
-                  >
-                    <span className="font-medium">{s.name}</span>
-                    {s.displayName && s.displayName !== s.name && (
-                      <span className="text-xs text-muted-foreground ml-2 mr-auto">{s.displayName}</span>
-                    )}
-                    <span className="text-muted-foreground text-xs">{s.category}</span>
-                  </button>
-                ))}
+                {filteredSymbols.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                    No symbols match &ldquo;{symbolFilter}&rdquo;
+                  </div>
+                ) : (
+                  filteredSymbols.map((s) => (
+                    <button
+                      key={s.id || s.name}
+                      onClick={() => {
+                        onSymbolChange(s.name);
+                        setShowSymbolSearch(false);
+                        setSymbolFilter("");
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-3 py-1.5 text-sm hover:bg-secondary",
+                        s.name === selectedSymbol && "bg-secondary",
+                      )}
+                    >
+                      <span className="font-medium">{s.name}</span>
+                      {s.displayName && s.displayName !== s.name && (
+                        <span className="text-xs text-muted-foreground ml-2 mr-auto">{s.displayName}</span>
+                      )}
+                      <span className="text-muted-foreground text-xs">{s.category}</span>
+                    </button>
+                  ))
+                )}
+                {matchHint && (
+                  <div className="px-3 py-2 text-center text-[11px] text-muted-foreground border-t border-border/40">
+                    {matchHint}
+                  </div>
+                )}
               </div>
             </div>
           </>

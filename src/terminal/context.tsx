@@ -37,6 +37,7 @@ import {
 } from "../services/queries.ts";
 import type { Order, PlaceOrderInput, Position, Symbol } from "../services/schemas.ts";
 import { useTradingStore } from "../services/store.tsx";
+import { wsClient } from "../services/ws.ts";
 import { toast } from "../services/toast.ts";
 import {
   type DrawingTool,
@@ -415,6 +416,13 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   const liveCandle = liveCandleUpdates[chartKey];
   const tick = ticks[selectedSymbol];
   const symbolInfo = symbols.find((s) => s.name === selectedSymbol) as Symbol | undefined;
+
+  // Tell the feed which market is on screen. Adapters that poll (the Yahoo
+  // stocks one) refresh the focused symbol hardest and the rest more slowly.
+  const chartSymbol = replayCandles ? undefined : selectedSymbol;
+  useEffect(() => {
+    if (chartSymbol) wsClient.setSymbolInterest([chartSymbol]);
+  }, [chartSymbol]);
   const pipDigits = useMemo(
     () => getPipDigits(symbolInfo, selectedSymbol),
     [symbolInfo, selectedSymbol],

@@ -16,10 +16,11 @@ import { Terminal } from "./terminal/Terminal.tsx";
  *  - `VITE_ADAPTER=hyperliquid`, or no `VITE_ADAPTER` with `VITE_HL_BUILDER_ADDRESS`
  *    set: the Hyperliquid broker (live markets, real wallet, real orders).
  *  - `VITE_ADAPTER=binance`: the live-market-data example from examples/binance-adapter.
+ *  - `VITE_ADAPTER=stocks`: US equities from Yahoo Finance, via examples/yahoo-stocks-adapter.
  *  - `VITE_ADAPTER=demo`, or nothing configured: the bundled demo data.
  *
- * The Hyperliquid and Binance code is loaded lazily, so neither reaches the
- * default (demo) bundle.
+ * The non-demo adapters are loaded lazily, so none of them reaches the default
+ * (demo) bundle.
  */
 
 const choice = chooseAdapter(import.meta.env);
@@ -34,22 +35,54 @@ function Loading() {
   );
 }
 
-function BinanceOrDemo() {
-  const wantsBinance = choice === "binance";
+/**
+ * Local dev/preview uses Vite's same-origin `/yh` and `/symdir` proxies. Static
+ * hosts (GitHub Pages) have no server, so they point both routes at the bundled
+ * Cloudflare Worker via VITE_PROXY_ORIGIN. See DEPLOYMENT.md.
+ */
+function stockFeedOptions() {
+  const origin = import.meta.env.VITE_PROXY_ORIGIN?.trim().replace(/\/+$/, "");
+  return {
+    baseUrl:
+      import.meta.env.VITE_YAHOO_PROXY_URL?.trim() || (origin ? `${origin}/yh` : undefined),
+    symDirBase:
+      import.meta.env.VITE_SYMDIR_PROXY_URL?.trim() || (origin ? `${origin}/symdir` : undefined),
+  };
+}
+
+/** Loads whichever non-demo adapter the build selected. */
+function loadSelectedAdapter(): Promise<OpenChartsAdapter> {
+  if (choice === "binance") {
+    return import("../examples/binance-adapter/binance-adapter.ts").then((m) =>
+      m.createBinancePaperAdapter(),
+    );
+  }
+  return import("../examples/yahoo-stocks-adapter/yahoo-stocks-adapter.ts").then((m) =>
+    m.createStockPaperAdapter(stockFeedOptions()),
+  );
+}
+
+function MarketOrDemo() {
+  const live = choice === "binance" || choice === "stocks";
   const [adapter, setAdapter] = useState<OpenChartsAdapter | null>(() =>
-    wantsBinance ? null : createDemoAdapter(),
+    live ? null : createDemoAdapter(),
   );
 
   useEffect(() => {
-    if (!wantsBinance) return;
-    import("../examples/binance-adapter/binance-adapter.ts")
-      .then(({ createBinancePaperAdapter }) => createBinancePaperAdapter())
-      .then(setAdapter)
+    if (!live) return;
+    let cancelled = false;
+    loadSelectedAdapter()
+      .then((next) => {
+        if (!cancelled) setAdapter(next);
+      })
       .catch((err: unknown) => {
-        console.error("[opencharts] failed to load the Binance adapter; using the demo", err);
-        setAdapter(createDemoAdapter());
+        console.error(`[opencharts] failed to load the ${choice} adapter; using the demo`, err);
+        if (!cancelled) setAdapter(createDemoAdapter());
       });
-  }, [wantsBinance]);
+    return () => {
+      cancelled = true;
+    };
+  }, [live]);
 
   if (!adapter) return null;
   return (
@@ -67,5 +100,5 @@ export function Root() {
       </Suspense>
     );
   }
-  return <BinanceOrDemo />;
+  return <MarketOrDemo />;
 }

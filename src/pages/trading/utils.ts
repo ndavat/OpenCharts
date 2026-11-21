@@ -5,7 +5,7 @@ import type { Timeframe } from "./constants.ts";
 
 /** Derive pip (decimal) precision from symbolInfo.tickSize or symbol name */
 export function getPipDigits(
-  symbolInfo?: { tickSize?: number | string },
+  symbolInfo?: { tickSize?: number | string; category?: string },
   symbolName?: string,
 ): number {
   const symbolDecimals = _symbolNameDecimals(symbolName);
@@ -14,6 +14,11 @@ export function getPipDigits(
     const tickDecimals = s.includes(".")
       ? s.split(".")[1]!.replace(/0+$/, "").length || s.split(".")[1]!.length
       : 0;
+    // Equities quote in cents no matter what the ticker is called. Without this
+    // the name heuristic below ("unknown → 5") wins and AAPL prints 342.56000.
+    if (/stock|equit|share|etf/i.test(symbolInfo.category ?? "")) {
+      return Math.max(tickDecimals, 2);
+    }
     // Use the higher of tick-derived or symbol-name-derived so forex pairs
     // (tickSize=0.0001) still show 5 decimal places instead of 4.
     return Math.max(tickDecimals, symbolDecimals, 2);

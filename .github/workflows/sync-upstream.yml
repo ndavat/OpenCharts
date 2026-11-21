@@ -1,0 +1,78 @@
+name: Sync upstream
+
+# Daily PR-based sync from the original repository. Our stocks adapter lives in
+# main, so upstream changes arrive as a reviewable PR instead of being merged
+# straight over our customizations. Merging the PR triggers the Pages deploy.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/dylanpersonguy/OpenCharts.git
+          git fetch upstream main --no-tags
+
+      - name: Merge upstream into a sync branch
+        id: merge
+        run: |
+          git checkout -B sync/upstream
+          before=$(git rev-parse HEAD)
+          if git merge --no-edit upstream/main; then
+            after=$(git rev-parse HEAD)
+            if [ "$before" = "$after" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "Already up to date with upstream."
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            git merge --abort
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            echo "Merge conflicted; no branch or PR was touched."
+          fi
+
+      - name: Push sync branch
+        if: steps.merge.outputs.changed == 'true'
+        run: git push --force origin sync/upstream
+
+      - name: Open or refresh the PR
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          body="Automated merge of \`dylanpersonguy/OpenCharts@main\` into our stocks fork. Merging this PR triggers the Pages deploy."
+          if gh pr view sync/upstream --json number >/dev/null 2>&1; then
+            gh pr edit sync/upstream --title "Sync upstream OpenCharts" --body "$body"
+          else
+            gh pr create --base main --head sync/upstream \
+              --title "Sync upstream OpenCharts" --body "$body"
+          fi
+
+      - name: Report conflicts
+        if: steps.merge.outputs.conflict == 'true'
+        run: |
+          echo "### Upstream sync needs manual resolution" >> "$GITHUB_STEP_SUMMARY"
+          echo "The scheduled merge hit conflicts. Nothing was pushed. Resolve locally:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`sh" >> "$GITHUB_STEP_SUMMARY"
+          echo "git fetch upstream && git checkout main && git merge upstream/main" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"

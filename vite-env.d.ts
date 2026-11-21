@@ -25,6 +25,12 @@ interface ImportMetaEnv {
   readonly VITE_CSP_ALLOW_TRADINGVIEW?: string;
   /** Legacy demo-backend base URL (non-Hyperliquid builds). */
   readonly VITE_API_URL?: string;
+  /** Origin of the hosted /yh + /symdir proxy Worker (static hosts only). */
+  readonly VITE_PROXY_ORIGIN?: string;
+  /** Full URL of the Yahoo chart proxy. Defaults to `${VITE_PROXY_ORIGIN}/yh`. */
+  readonly VITE_YAHOO_PROXY_URL?: string;
+  /** Full URL of the Nasdaq symbol-directory proxy. Defaults to `${VITE_PROXY_ORIGIN}/symdir`. */
+  readonly VITE_SYMDIR_PROXY_URL?: string;
 }
 
 interface GoogleAccountsId {

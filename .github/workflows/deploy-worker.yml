@@ -1,0 +1,51 @@
+name: Deploy data proxy Worker
+
+# A static Pages site has no server, so the stocks adapter's /yh and /symdir
+# routes are served by this Cloudflare Worker. One-time secrets are documented
+# in DEPLOYMENT.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/yahoo-stocks-adapter/worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yahoo-proxy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Require Cloudflare credentials
+        if: env.CF_TOKEN == '' || env.CF_ACCOUNT == ''
+        run: |
+          echo "::error::Set CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets (see DEPLOYMENT.md)."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy examples/yahoo-stocks-adapter/worker/yahoo-proxy.js --name opencharts-proxy
+
+      - name: Next step
+        run: |
+          echo "### Worker deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Copy the workers.dev URL from the deploy log above, then set the" >> "$GITHUB_STEP_SUMMARY"
+          echo "repository variable \`PROXY_ORIGIN\` to that origin (no trailing slash)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Example: \`https://opencharts-proxy.<subdomain>.workers.dev\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Then re-run **Deploy stocks terminal to Pages** to bake it into the build." >> "$GITHUB_STEP_SUMMARY"
