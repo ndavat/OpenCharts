@@ -17,11 +17,19 @@ work:
 1. **Pages source.** In the fork: Settings → Pages → *Build and deployment* →
    Source: **GitHub Actions**.
 
-2. **Cloudflare secrets.** Settings → Secrets and variables → Actions →
-   *Repository secrets*:
-   - `CLOUDFLARE_API_TOKEN` — a token with **Account:View** and
-     **Workers Scripts:Edit** for the target account.
-   - `CLOUDFLARE_ACCOUNT_ID` — the account ID from the Cloudflare dashboard.
+2. **Cloudflare secrets.** You need a free Cloudflare account
+   (https://dash.cloudflare.com/sign-up). Then, in the fork: Settings →
+   Secrets and variables → Actions → *Repository secrets*:
+   - `CLOUDFLARE_API_TOKEN` — create at
+     https://dash.cloudflare.com/profile/api-tokens → **Create Token** → use
+     the **Edit Cloudflare Workers** template, scoped to your account. (For a
+     custom token, grant Account → *Account Settings: Read* +
+     *Workers Scripts: Edit*.) Copy the value when it is shown — it appears
+     only once.
+   - `CLOUDFLARE_ACCOUNT_ID` — in the Cloudflare dashboard go to
+     **Workers & Pages** → **Account Details** → copy **Account ID**. It is
+     also the 32-character hex segment in dashboard URLs
+     (`dash.cloudflare.com/<account-id>/...`).
 
 3. **Deploy the Worker.** Run the **Deploy data proxy Worker** workflow
    (Actions → select it → *Run workflow*). Its log prints the deployed URL,
