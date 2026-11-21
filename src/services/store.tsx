@@ -335,7 +335,10 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   positions: [],
   orders: [],
   symbols: [],
-  selectedSymbol: "BTCUSD",
+  // The demo boots on BTCUSD; for the stocks build BTCUSD is now a real symbol,
+  // so choose the adapter's preferred default up front rather than relying on
+  // loadSymbols() to detect a missing ticker.
+  selectedSymbol: chooseAdapter(import.meta.env) === "stocks" ? "AAPL" : "BTCUSD",
   ticks: {},
   liveTicks: {},
   liveCandleUpdates: {},
@@ -390,7 +393,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
   loadSymbols: async () => {
     const symbols = await api.getSymbols();
     set({ symbols });
-    // The store boots on the demo's "BTCUSD". Any adapter with a different
+    // The store boots on the demo's "BTCUSD" (or "AAPL" for stocks). Any adapter with a different
     // universe (Hyperliquid, the Yahoo stocks feed) must land on a market that
     // actually exists, or the chart opens empty.
     if (symbols.length > 0) {
