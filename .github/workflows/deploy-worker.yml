@@ -40,7 +40,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy examples/yahoo-stocks-adapter/worker/yahoo-proxy.js --name opencharts-proxy
+          command: deploy examples/yahoo-stocks-adapter/worker/yahoo-proxy.js --name opencharts-proxy --compatibility-date 2026-01-01
 
       - name: Next step
         run: |
